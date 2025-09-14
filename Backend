@@ -1,0 +1,139 @@
+import psycopg2
+import pandas as pd
+from datetime import date
+import sys
+
+# Define a function to exit the application gracefully
+def exit_app(message):
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+class PerformanceDB:
+    def __init__(self, dbname, user, password, host="localhost"):
+        """
+        Initializes the database connection.
+        """
+        try:
+            self.conn = psycopg2.connect(
+                dbname="performance management system",
+                user="postgres",
+                password="Atul@2000",
+                host="localhost"
+            )
+            self.cursor = self.conn.cursor()
+        except psycopg2.OperationalError as e:
+            exit_app(f"Database connection failed: {e}")
+            self.conn = None
+
+    def close(self):
+        """
+        Closes the database connection.
+        """
+        if self.conn:
+            self.cursor.close()
+            self.conn.close()
+
+    def get_employees(self):
+        if not self.conn: return pd.DataFrame()
+        query = "SELECT employee_id, first_name, last_name, email, hire_date, department_id, manager_id FROM employees;"
+        self.cursor.execute(query)
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['employee_id', 'first_name', 'last_name', 'email', 'hire_date', 'department_id', 'manager_id'])
+        return df
+
+    def get_departments(self):
+        if not self.conn: return pd.DataFrame()
+        query = "SELECT department_id, department_name FROM departments;"
+        self.cursor.execute(query)
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['department_id', 'department_name'])
+        return df
+
+    def create_employee(self, fname, lname, email, hire_date, department_id, manager_id):
+        if not self.conn: return
+        query = "INSERT INTO employees (first_name, last_name, email, hire_date, department_id, manager_id) VALUES (%s, %s, %s, %s, %s, %s);"
+        self.cursor.execute(query, (fname, lname, email, hire_date, department_id, manager_id))
+        self.conn.commit()
+
+    def update_employee_email(self, employee_id, new_email):
+        if not self.conn: return
+        query = "UPDATE employees SET email = %s WHERE employee_id = %s;"
+        self.cursor.execute(query, (new_email, employee_id))
+        self.conn.commit()
+
+    def delete_record(self, table_name, id_column, record_id):
+        if not self.conn: return
+        query = f"DELETE FROM {table_name} WHERE {id_column} = %s;"
+        self.cursor.execute(query, (record_id,))
+        self.conn.commit()
+
+    def get_goals_by_employee(self, employee_id):
+        if not self.conn: return pd.DataFrame()
+        query = "SELECT * FROM goals WHERE employee_id = %s;"
+        self.cursor.execute(query, (employee_id,))
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['goal_id', 'employee_id', 'goal_description', 'due_date', 'status'])
+        return df
+
+    def create_goal(self, employee_id, description, due_date):
+        if not self.conn: return
+        query = "INSERT INTO goals (employee_id, goal_description, due_date) VALUES (%s, %s, %s);"
+        self.cursor.execute(query, (employee_id, description, due_date))
+        self.conn.commit()
+    
+    def get_reviews_by_employee(self, employee_id):
+        if not self.conn: return pd.DataFrame()
+        query = "SELECT * FROM performance_reviews WHERE employee_id = %s;"
+        self.cursor.execute(query, (employee_id,))
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['review_id', 'employee_id', 'reviewer_id', 'review_date', 'score', 'comments'])
+        return df
+
+    def create_review(self, employee_id, review_date, score, comments, reviewer_id):
+        if not self.conn: return
+        query = "INSERT INTO performance_reviews (employee_id, review_date, score, comments, reviewer_id) VALUES (%s, %s, %s, %s, %s);"
+        self.cursor.execute(query, (employee_id, review_date, score, comments, reviewer_id))
+        self.conn.commit()
+
+    def get_avg_score_by_department(self):
+        if not self.conn: return pd.DataFrame()
+        query = """
+            SELECT d.department_name, AVG(r.score) as avg_score
+            FROM performance_reviews r
+            JOIN employees e ON r.employee_id = e.employee_id
+            JOIN departments d ON e.department_id = d.department_id
+            GROUP BY d.department_name;
+        """
+        self.cursor.execute(query)
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['department_name', 'avg_score'])
+        return df
+
+    def get_top_employee_scores(self):
+        if not self.conn: return pd.DataFrame()
+        query = """
+            SELECT e.first_name, e.last_name, AVG(r.score) as avg_score
+            FROM performance_reviews r
+            JOIN employees e ON r.employee_id = e.employee_id
+            GROUP BY e.employee_id, e.first_name, e.last_name
+            ORDER BY avg_score DESC
+            LIMIT 5;
+        """
+        self.cursor.execute(query)
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['first_name', 'last_name', 'avg_score'])
+        return df
+
+    def get_goal_status_count(self):
+        if not self.conn: return pd.DataFrame()
+        query = "SELECT status, COUNT(*) FROM goals GROUP BY status;"
+        self.cursor.execute(query)
+        df = pd.DataFrame(self.cursor.fetchall(), columns=['status', 'count'])
+        return df
+
+if __name__ == '__main__':
+    # This block is for local testing of the backend functions
+    print("Backend script is being executed. Testing a database call...")
+    # NOTE: You must have a local PostgreSQL DB running with the specified credentials and schema
+    try:
+        db_test = PerformanceDB("your_db_name", "your_user", "your_password")
+        employees_test = db_test.get_employees()
+        print("Successfully fetched employees:")
+        print(employees_test)
+        db_test.close()
+    except Exception as e:
+        print(f"An error occurred during backend testing: {e}")
