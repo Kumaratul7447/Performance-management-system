@@ -1,0 +1,221 @@
+import streamlit as st
+import pandas as pd
+from backend_pm import PerformanceDB
+
+# --- Database Setup and Connection ---
+# Replace with your actual database details
+DB_NAME = "performance management system"
+DB_USER = "postgres"
+DB_PASSWORD = "Atul@2000"
+DB_HOST = "localhost"
+
+# Create a single database connection for the app
+@st.cache_resource
+def get_db_connection():
+    return PerformanceDB(DB_NAME, DB_USER, DB_PASSWORD, DB_HOST)
+
+db = get_db_connection()
+
+# --- Utility Functions ---
+# Note: These functions act as a bridge to the backend class
+# They are defined here to make the main function cleaner.
+def get_employees():
+    return db.get_employees()
+
+def get_departments():
+    return db.get_departments()
+
+def get_goals_by_employee(employee_id):
+    return db.get_goals_by_employee(int(employee_id))
+
+def get_reviews_by_employee(employee_id):
+    return db.get_reviews_by_employee(int(employee_id))
+
+def create_employee(fname, lname, email, hire_date, department_id, manager_id):
+    db.create_employee(fname, lname, email, hire_date, int(department_id) if department_id is not None else None, int(manager_id) if manager_id is not None else None)
+
+def update_employee_email(employee_id, new_email):
+    db.update_employee_email(int(employee_id), new_email)
+
+def delete_record(table_name, id_column, record_id):
+    db.delete_record(table_name, id_column, int(record_id))
+
+def create_goal(employee_id, description, due_date):
+    db.create_goal(int(employee_id), description, due_date)
+
+def create_review(employee_id, review_date, score, comments, reviewer_id):
+    db.create_review(int(employee_id), review_date, int(score), comments, int(reviewer_id))
+
+def get_avg_score_by_department():
+    return db.get_avg_score_by_department()
+
+def get_top_employee_scores():
+    return db.get_top_employee_scores()
+
+def get_goal_status_count():
+    return db.get_goal_status_count()
+
+def main():
+    st.title("Performance Management System 📊")
+
+    # --- Sidebar for Navigation ---
+    menu = ["Employees", "Goals", "Reviews", "Business Insights"]
+    choice = st.sidebar.selectbox("Menu", menu)
+    
+    # --- Employees Page ---
+    if choice == "Employees":
+        st.subheader("Manage Employees")
+        st.write("### Current Employees")
+        employees_df = get_employees()
+        st.dataframe(employees_df)
+
+        with st.expander("➕ Add New Employee"):
+            with st.form("add_employee_form"):
+                st.write("Enter Employee Details:")
+                fname = st.text_input("First Name")
+                lname = st.text_input("Last Name")
+                email = st.text_input("Email")
+                hire_date = st.date_input("Hire Date")
+                
+                departments_df = get_departments()
+                department_id = None
+                if not departments_df.empty:
+                    department_names = departments_df['department_name'].tolist()
+                    department_choice = st.selectbox("Department", department_names)
+                    department_row = departments_df[departments_df['department_name'] == department_choice]
+                    if not department_row.empty:
+                        department_id = int(department_row['department_id'].iloc[0])
+                else:
+                    st.warning("Please add departments to the database first.")
+
+                manager_options = [('None', None)] + [(f"{row['first_name']} {row['last_name']} (ID: {row['employee_id']})", row['employee_id']) for _, row in employees_df.iterrows()]
+                manager_choice = st.selectbox("Manager", [option[0] for option in manager_options])
+                
+                manager_id = [option[1] for option in manager_options if option[0] == manager_choice][0]
+                
+                submitted = st.form_submit_button("Add Employee")
+                if submitted:
+                    if department_id is not None:
+                        create_employee(fname, lname, email, hire_date, department_id, manager_id)
+                        st.success("Employee added successfully! ✅")
+                    else:
+                        st.error("Cannot add employee. No department selected.")
+
+        with st.expander("✍️ Update/❌ Delete Employee"):
+            st.write("### Select Employee to Update/Delete")
+            if not employees_df.empty:
+                employee_list = employees_df[['employee_id', 'first_name', 'last_name']].apply(lambda x: f"{x['first_name']} {x['last_name']} (ID: {x['employee_id']})", axis=1).tolist()
+                
+                selected_employee_str = st.selectbox("Select Employee", employee_list)
+                selected_employee_id = int(selected_employee_str.split('(ID: ')[1][:-1])
+                
+                st.write(f"#### Update Email for {selected_employee_str}")
+                with st.form("update_email_form"):
+                    current_email = employees_df[employees_df['employee_id'] == selected_employee_id]['email'].iloc[0]
+                    new_email = st.text_input("New Email", value=current_email)
+                    submitted_update = st.form_submit_button("Update Email")
+                    if submitted_update:
+                        update_employee_email(selected_employee_id, new_email)
+                        st.success(f"Email for Employee {selected_employee_id} updated. ✅")
+
+                st.write(f"#### Delete {selected_employee_str}")
+                with st.form("delete_employee_form"):
+                    submitted_delete = st.form_submit_button("Delete Employee")
+                    if submitted_delete:
+                        delete_record('employees', 'employee_id', selected_employee_id)
+                        st.success(f"Employee {selected_employee_id} deleted. 🗑️")
+            else:
+                st.info("No employees to display.")
+
+    # --- Goals Page ---
+    elif choice == "Goals":
+        st.subheader("Manage Goals")
+        employees_df = get_employees()
+        if not employees_df.empty:
+            employee_list_goals = employees_df[['employee_id', 'first_name', 'last_name']].apply(lambda x: f"{x['first_name']} {x['last_name']} (ID: {x['employee_id']})", axis=1).tolist()
+            selected_employee_str_goals = st.selectbox("Select Employee to View Goals", employee_list_goals)
+            selected_employee_id_goals = int(selected_employee_str_goals.split('(ID: ')[1][:-1])
+            
+            st.write(f"### Goals for {selected_employee_str_goals}")
+            goals_df = get_goals_by_employee(selected_employee_id_goals)
+            if not goals_df.empty:
+                st.dataframe(goals_df)
+            else:
+                st.info("No goals found for this employee.")
+        else:
+            st.info("Please add employees first.")
+
+        with st.expander("➕ Add New Goal"):
+            with st.form("add_goal_form"):
+                employees_df_goals = get_employees()
+                if not employees_df_goals.empty:
+                    employee_options_goals = [(f"{row['first_name']} {row['last_name']} (ID: {row['employee_id']})", row['employee_id']) for _, row in employees_df_goals.iterrows()]
+                    goal_employee_choice = st.selectbox("Select Employee", [option[0] for option in employee_options_goals])
+                    goal_employee_id = [option[1] for option in employee_options_goals if option[0] == goal_employee_choice][0]
+
+                    description = st.text_area("Goal Description")
+                    due_date = st.date_input("Due Date")
+                    submitted = st.form_submit_button("Add Goal")
+                    if submitted:
+                        create_goal(goal_employee_id, description, due_date)
+                        st.success("Goal added successfully! ✅")
+                else:
+                    st.warning("Please add employees before setting goals.")
+    
+    # --- Reviews Page ---
+    elif choice == "Reviews":
+        st.subheader("Manage Performance Reviews")
+        employees_df = get_employees()
+        if not employees_df.empty:
+            employee_list_reviews = employees_df[['employee_id', 'first_name', 'last_name']].apply(lambda x: f"{x['first_name']} {x['last_name']} (ID: {x['employee_id']})", axis=1).tolist()
+            selected_employee_str_reviews = st.selectbox("Select Employee to View Reviews", employee_list_reviews)
+            selected_employee_id_reviews = int(selected_employee_str_reviews.split('(ID: ')[1][:-1])
+            
+            st.write(f"### Reviews for {selected_employee_str_reviews}")
+            reviews_df = get_reviews_by_employee(selected_employee_id_reviews)
+            if not reviews_df.empty:
+                st.dataframe(reviews_df)
+            else:
+                st.info("No reviews found for this employee.")
+        else:
+            st.info("Please add employees first.")
+
+        with st.expander("➕ Add New Performance Review"):
+            with st.form("add_review_form"):
+                employees_df_reviews = get_employees()
+                if not employees_df_reviews.empty:
+                    employee_options_reviews = [(f"{row['first_name']} {row['last_name']} (ID: {row['employee_id']})", row['employee_id']) for _, row in employees_df_reviews.iterrows()]
+                    review_employee_choice = st.selectbox("Select Employee to Review", [option[0] for option in employee_options_reviews])
+                    review_employee_id = [option[1] for option in employee_options_reviews if option[0] == review_employee_choice][0]
+
+                    reviewer_employee_choice = st.selectbox("Select Reviewer", [option[0] for option in employee_options_reviews])
+                    reviewer_id = [option[1] for option in employee_options_reviews if option[0] == reviewer_employee_choice][0]
+
+                    review_date = st.date_input("Review Date")
+                    score = st.number_input("Score (1-5)", min_value=1, max_value=5, format="%d")
+                    comments = st.text_area("Comments")
+                    
+                    submitted = st.form_submit_button("Add Review")
+                    if submitted:
+                        create_review(review_employee_id, review_date, score, comments, reviewer_id)
+                        st.success("Review added successfully! ✅")
+                else:
+                    st.warning("Please add employees before creating reviews.")
+    
+    # --- Business Insights Page ---
+    elif choice == "Business Insights":
+        st.subheader("Business Insights from Performance Data")
+        
+        st.write("### Average Performance Score by Department")
+        avg_scores_df = get_avg_score_by_department()
+        st.dataframe(avg_scores_df)
+
+        st.write("### Top 5 Employee Performance Scores")
+        top_scores_df = get_top_employee_scores()
+        st.dataframe(top_scores_df)
+        
+        st.write("### Goal Status Breakdown")
+        goal_status_df = get_goal_status_count()
+        st.dataframe(goal_status_df)
+
+if __name__ == "__main__":
