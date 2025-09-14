@@ -1,0 +1,162 @@
+-- Schema for a Performance Management System
+
+-- Create a table for users with role-based access
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    role VARCHAR(50) NOT NULL CHECK (role IN ('employee', 'manager', 'hr', 'admin')),
+    manager_id INTEGER REFERENCES users(user_id)
+);
+
+-- Create a table for managing goals (OKRs/KPIs)
+CREATE TABLE goals (
+    goal_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    status VARCHAR(50) NOT NULL CHECK (status IN ('in_progress', 'completed', 'at_risk', 'not_started')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create a table for real-time feedback
+CREATE TABLE feedback (
+    feedback_id SERIAL PRIMARY KEY,
+    giver_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    receiver_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create a table for formal performance reviews
+CREATE TABLE performance_reviews (
+    review_id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    reviewer_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    review_date DATE NOT NULL,
+    overall_rating INTEGER CHECK (overall_rating BETWEEN 1 AND 5),
+    comments TEXT,
+    status VARCHAR(50) NOT NULL CHECK (status IN ('draft', 'pending', 'completed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create a table to track training and development modules
+CREATE TABLE training_modules (
+    module_id SERIAL PRIMARY KEY,
+    module_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    duration_hours INTEGER
+);
+
+-- Create a table to link employees with their completed training
+CREATE TABLE employee_training (
+    employee_training_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    module_id INTEGER REFERENCES training_modules(module_id) ON DELETE CASCADE,
+    completion_date DATE NOT NULL
+);
+
+-- Insert some initial data for demonstration purposes
+INSERT INTO users (username, password_hash, full_name, email, role) VALUES
+('jdoe', 'hashedpassword1', 'John Doe', 'john.doe@example.com', 'manager'),
+('asmith', 'hashedpassword2', 'Alice Smith', 'alice.smith@example.com', 'employee'),
+('bjones', 'hashedpassword3', 'Bob Jones', 'bob.jones@example.com', 'employee'),
+('ssmith', 'hashedpassword4', 'Sue Smith', 'sue.smith@example.com', 'hr'),
+('cadams', 'hashedpassword5', 'Chris Adams', 'chris.adams@example.com', 'admin');
+
+UPDATE users SET manager_id = 1 WHERE user_id IN (2, 3);
+
+INSERT INTO goals (user_id, title, description, due_date, status) VALUES
+(2, 'Complete Q1 Project', 'Finish all tasks for the Q1 project by the deadline.', '2024-03-31', 'in_progress'),
+(2, 'Learn Python', 'Complete online course on advanced Python programming.', '2024-06-30', 'not_started'),
+(3, 'Improve client satisfaction', 'Achieve a satisfaction score of 95% from key clients.', '2024-06-30', 'at_risk');
+
+INSERT INTO feedback (giver_id, receiver_id, content, rating) VALUES
+(1, 2, 'Great work on the Q1 project, keep it up!', 5),
+(2, 1, 'Thank you for the guidance on the new project.', 4),
+(1, 3, 'Please be more proactive with client communication.', 3);
+
+INSERT INTO performance_reviews (employee_id, reviewer_id, review_date, overall_rating, comments, status) VALUES
+(2, 1, '2024-04-15', 4, 'Alice has shown significant growth in her role. She is a valuable asset to the team.', 'completed'),
+(3, 1, '2024-04-20', 3, 'Bob needs to work on improving his proactivity and communication skills.', 'pending');
+
+INSERT INTO training_modules (module_id, module_name, description, duration_hours) VALUES
+(1, 'Effective Communication', 'A course on improving workplace communication skills.', 8),
+(2, 'Project Management Basics', 'An introductory course to project management methodologies.', 12);
+
+INSERT INTO employee_training (user_id, module_id, completion_date) VALUES
+(2, 1, '2024-02-10'),
+(2, 2, '2024-03-05');
+
+-- Create the departments table
+CREATE TABLE departments (
+    department_id SERIAL PRIMARY KEY,
+    department_name VARCHAR(100) NOT NULL
+);
+
+-- Create the employees table
+-- The 'manager_id' is a self-referencing foreign key.
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    hire_date DATE NOT NULL,
+    department_id INT REFERENCES departments(department_id),
+    manager_id INT REFERENCES employees(employee_id)
+);
+
+-- Create the goals table
+CREATE TABLE goals (
+    goal_id SERIAL PRIMARY KEY,
+    employee_id INT REFERENCES employees(employee_id),
+    goal_description TEXT NOT NULL,
+    due_date DATE NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'In Progress'
+);
+
+-- Create the performance_reviews table
+CREATE TABLE performance_reviews (
+    review_id SERIAL PRIMARY KEY,
+    employee_id INT REFERENCES employees(employee_id),
+    review_date DATE NOT NULL,
+    score INT CHECK (score >= 1 AND score <= 5), -- Score is on a scale of 1 to 5
+    comments TEXT,
+    reviewer_id INT REFERENCES employees(employee_id)
+);
+
+-- Insert data into the 'departments' table
+INSERT INTO departments (department_name) VALUES
+('Engineering'),
+('Sales'),
+('Marketing'),
+('Human Resources');
+
+-- Insert data into the 'employees' table
+-- We'll first insert a manager, then other employees referencing them.
+INSERT INTO employees (first_name, last_name, email, hire_date, department_id, manager_id) VALUES
+('Alice', 'Johnson', 'alice.j@company.com', '2020-01-15', 1, NULL),
+('Bob', 'Williams', 'bob.w@company.com', '2021-03-20', 2, 1),
+('Charlie', 'Brown', 'charlie.b@company.com', '2022-06-10', 1, 1),
+('Diana', 'Miller', 'diana.m@company.com', '2023-01-05', 3, 2),
+('Evan', 'Davis', 'evan.d@company.com', '2023-02-14', 2, 2);
+
+-- Insert data into the 'goals' table
+INSERT INTO goals (employee_id, goal_description, due_date, status) VALUES
+(2, 'Achieve 10% sales growth in Q4', '2023-12-31', 'In Progress'),
+(3, 'Complete new feature set for Q3', '2023-09-30', 'Completed'),
+(4, 'Launch new marketing campaign', '2024-03-15', 'Not Started'),
+(2, 'Mentor junior team member', '2023-10-30', 'In Progress');
+
+-- Insert data into the 'performance_reviews' table
+INSERT INTO performance_reviews (employee_id, review_date, score, comments, reviewer_id) VALUES
+(2, '2023-07-01', 4, 'Met most sales targets, showing strong progress.', 1),
+(3, '2023-07-05', 5, 'Exceeded expectations on project delivery.', 1),
+(4, '2023-08-10', 3, 'Needs to improve project management skills.', 2);
+
+
